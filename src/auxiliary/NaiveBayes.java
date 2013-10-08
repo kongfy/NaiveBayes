@@ -23,6 +23,7 @@ public class NaiveBayes extends Classifier {
     private HashMap<Double,Bundle>[][] _attrCounter;
     private double[] _labelList;
     private double[][] _mean, _mse;
+    private int _virtual;
     
 
     public NaiveBayes() {
@@ -34,12 +35,14 @@ public class NaiveBayes extends Classifier {
         _isCategory = isCategory;
         _labels = labels;
         _attrCount = _isCategory.length - 1;
+        _virtual = 0;
         
         //处理缺失属性
         _defaults = kill_missing_data();
         
         countForLabels();
         countForAttributes();
+        updateProbability();
     }
 
     @Override
@@ -50,6 +53,9 @@ public class NaiveBayes extends Classifier {
     			features[i] = _defaults[i];
     		}
     	}
+    	
+    	//拉普拉斯校准
+    	Laplace(features);
     	
     	double probability = -1;
     	double anser = 0;
@@ -135,7 +141,6 @@ public class NaiveBayes extends Classifier {
 			} else {
 				bundle.count++;
 			}
-			bundle.probability = (double)bundle.count / _labels.length;
 		}
     	
     	_labelList = new double[count];
@@ -173,10 +178,14 @@ public class NaiveBayes extends Classifier {
         				bundle = new Bundle();
         				bundle.count = 1;
         				counter.put(_features[i][j], bundle);
+        				
+        				//拉普拉斯校准
+        				bundle.count++;
+        				_virtual++;
+        				_labelCounter.get(_labels[i]).count++;
         			} else {
         				bundle.count++;
         			}
-        			bundle.probability = (double)bundle.count / _labelCounter.get(_labels[i]).count;
     			}
     		}
     	}
@@ -235,13 +244,7 @@ public class NaiveBayes extends Classifier {
     		if (_isCategory[i]) {
     			HashMap<Double, Bundle> counter = _attrCounter[indexForLabel(label)][i];
         		Bundle bundle = counter.get(features[i]);
-        		if (bundle == null) {
-        			//System.out.println("error no bundle");
-        			temp *= 0;
-        			//拉普拉斯校对
-        		} else {
-        			temp *= bundle.probability;
-        		}
+        		temp *= bundle.probability;
     		} else {
     			//连续属性计算概率
     			double mean = _mean[index][i];
@@ -266,5 +269,50 @@ public class NaiveBayes extends Classifier {
     	}
     	
     	return temp;
+    }
+    
+    private void Laplace(double[] features) {
+    	for (int i = 0; i < _labelList.length; ++i) {
+    		double label = _labelList[i];
+    		HashMap<Double, Bundle>[] temp = _attrCounter[i];
+    		for (int j = 0; j < _attrCount; ++j) {
+    			if (_isCategory[j]) {
+    				HashMap<Double, Bundle> counter = temp[j];
+    				Bundle bundle = counter.get(features[j]);
+    				
+    				if (bundle == null) {
+    					bundle = new Bundle();
+    					bundle.count = 1;
+    					counter.put(features[j], bundle);
+    					_virtual++;
+    					_labelCounter.get(label).count++;
+    				}
+    			}
+    		}
+    	}
+    	updateProbability();
+    }
+    
+    private void updateProbability() {
+    	for (int i = 0; i < _labelList.length; ++i) {
+    		Bundle bundle = _labelCounter.get(_labelList[i]);
+    		bundle.probability = (double)bundle.count / (_labels.length + _virtual);
+    	}
+    	
+    	for (int i = 0; i < _labelList.length; ++i) {
+    		double label = _labelList[i];
+    		HashMap<Double, Bundle>[] temp = _attrCounter[i];
+    		for (int j = 0; j < _attrCount; ++j) {
+    			if (_isCategory[j]) {
+    				HashMap<Double, Bundle> counter = temp[j];
+        			
+    				Iterator<Double> iterator = counter.keySet().iterator();
+        	    	while (iterator.hasNext()) {
+        	    		Bundle bundle = counter.get(iterator.next());
+        	    		bundle.probability = (double)bundle.count / _labelCounter.get(label).count;
+        	    	}
+    			}
+    		}
+    	}
     }
 }
