@@ -1,11 +1,6 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package auxiliary;
 
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.*;
 
 /**
  *
@@ -27,6 +22,7 @@ public class NaiveBayes extends Classifier {
     private HashMap<Double, Bundle> _labelCounter;
     private HashMap<Double,Bundle>[][] _attrCounter;
     private double[] _labelList;
+    private double[][] _mean, _mse;
     
 
     public NaiveBayes() {
@@ -44,7 +40,6 @@ public class NaiveBayes extends Classifier {
         
         countForLabels();
         countForAttributes();
-        updateProbability();
     }
 
     @Override
@@ -57,12 +52,12 @@ public class NaiveBayes extends Classifier {
     	}
     	
     	double probability = -1;
-    	int anser = 0;
+    	double anser = 0;
     	for (int i = 0; i < _labelList.length; ++i) {
 			double temp = calculateProbabilityForLabelIndex(i, features);
 			if (temp > probability) {
 				probability = temp;
-				anser = i;
+				anser = _labelList[i];
 			}
 		}
     	
@@ -153,31 +148,73 @@ public class NaiveBayes extends Classifier {
     
     private void countForAttributes() {
     	_attrCounter = new HashMap[_labelList.length][];
+    	_mean = new double[_labelList.length][_attrCount];
+    	_mse = new double[_labelList.length][_attrCount];
     	
     	for (int i = 0; i < _labelList.length; ++i) {
     		HashMap<Double, Bundle>[] temp = new HashMap[_attrCount];
     		_attrCounter[i] = temp;
     		for (int j = 0; j < _attrCount; ++j) {
-    			//统计属性j中属于类别i的数目
-    			HashMap<Double, Bundle> counter = new HashMap<Double, Bundle>();
-    			temp[j] = counter;
+    			if (_isCategory[j]) {
+    				HashMap<Double, Bundle> counter = new HashMap<Double, Bundle>();
+        			temp[j] = counter;
+    			}
     		}
     	}
     	
     	for (int i = 0; i < _features.length; ++i) {
     		HashMap<Double, Bundle>[] temp = _attrCounter[indexForLabel(_labels[i])];
     		for (int j = 0; j < _attrCount; ++j) {
-    			HashMap<Double , Bundle> counter = temp[j];
-    			Bundle bundle = counter.get(_features[i][j]);
-    			
-    			if (bundle == null) {
-    				bundle = new Bundle();
-    				bundle.count = 1;
-    				counter.put(_features[i][j], bundle);
-    			} else {
-    				bundle.count++;
+    			if (_isCategory[j]) {
+    				HashMap<Double , Bundle> counter = temp[j];
+        			Bundle bundle = counter.get(_features[i][j]);
+        			
+        			if (bundle == null) {
+        				bundle = new Bundle();
+        				bundle.count = 1;
+        				counter.put(_features[i][j], bundle);
+        			} else {
+        				bundle.count++;
+        			}
+        			bundle.probability = (double)bundle.count / _labelCounter.get(_labels[i]).count;
     			}
-    			bundle.probability = (double)bundle.count / _labelCounter.get(_labels[i]).count;
+    		}
+    	}
+    	
+    	//为连续属性计算平均值
+    	for (int i = 0; i < _labelList.length; ++i) {
+    		double label = _labelList[i];
+    		for (int j = 0; j < _attrCount; ++j) {
+    			if (_isCategory[j]) continue;
+    			
+    			int count = 0;
+        		double temp = 0;
+        		for (int k = 0; k < _features.length; ++k) {
+        			if (_labels[k] == label) {
+        				temp += _features[k][j];
+        				count++;
+        			}
+        		}
+    			_mean[i][j] = temp / count;
+    		}
+    	}
+    	//为连续属性计算标准差
+    	for (int i = 0; i < _labelList.length; ++i) {
+    		double label = _labelList[i];
+    		for (int j = 0; j < _attrCount; ++j) {
+    			if (_isCategory[j]) continue;
+    			
+    			int count = 0;
+        		double temp = 0;
+        		double mean = _mean[i][j];
+        		for (int k = 0; k < _features.length; ++k) {
+        			if (_labels[k] == label) {
+        				double sub = _features[k][j] - mean;
+        				temp += sub * sub;
+        				count++;
+        			}
+        		}
+    			_mse[i][j] = Math.sqrt(temp / count);
     		}
     	}
     }
@@ -191,26 +228,43 @@ public class NaiveBayes extends Classifier {
     	return 0;
     }
     
-    private void updateProbability() {
-    	
-    }
-    
     private double calculateProbabilityForLabelIndex(int index, double[] features) {
     	double label = _labelList[index];
     	double temp = _labelCounter.get(label).probability;
     	for (int i = 0; i < features.length; ++i) {
-    		HashMap<Double, Bundle> counter = _attrCounter[indexForLabel(label)][i];
-    		Bundle bundle = counter.get(features[i]);
-    		if (bundle == null) {
-    			//System.out.println("error no bundle");
-    			temp *= 0;
-    			//拉普拉斯校对
+    		if (_isCategory[i]) {
+    			HashMap<Double, Bundle> counter = _attrCounter[indexForLabel(label)][i];
+        		Bundle bundle = counter.get(features[i]);
+        		if (bundle == null) {
+        			//System.out.println("error no bundle");
+        			temp *= 0;
+        			//拉普拉斯校对
+        		} else {
+        			temp *= bundle.probability;
+        		}
     		} else {
-    			temp *= bundle.probability;
+    			//连续属性计算概率
+    			double mean = _mean[index][i];
+    			double mse = _mse[index][i];
+    			double var = features[i];
+    			
+    			if (mse != 0) {
+    				//使用高斯高斯分布
+    				double gauss = 1 / (Math.sqrt(2*Math.PI) * mse);
+        			double t = var - mean;
+        			gauss *= Math.exp(-(t*t) / (2*mse*mse));
+        			temp *= gauss;
+    			} else {
+    				//只有一个值，无法使用高斯分布
+    				if (var == mean) {
+    					temp *= 1;
+    				} else {
+    					temp *= 0;
+    				}
+    			}
     		}
     	}
     	
     	return temp;
     }
-    
 }
