@@ -8,8 +8,8 @@ import java.util.*;
  */
 
 class Bundle  {
-    int count;
-    double probability;
+    int count;                 //记录关联的样本数量
+    double probability;        //保存概率值
 }
 
 public class NaiveBayes extends Classifier {
@@ -17,13 +17,13 @@ public class NaiveBayes extends Classifier {
     private boolean[] _isCategory;
     private double[] _labels;
     private double[] _defaults;
-    private int _attrCount;
+    private int _attrCount;                               //样本的属性数量
     
-    private HashMap<Double, Bundle> _labelCounter;
-    private HashMap<Double,Bundle>[][] _attrCounter;
-    private double[] _labelList;
-    private double[][] _mean, _mse;
-    private int _virtual;
+    private HashMap<Double, Bundle> _labelCounter;        //记录P(C)
+    private HashMap<Double,Bundle>[][] _attrCounter;      //记录P(X|C),
+    private double[] _labelList;                          //所有不同标签的列表
+    private double[][] _mean, _mse;                       //为连续属性存储均值和标准差
+    private int _virtual;                                 //拉普拉斯校准中添加的假样本数量
     
 
     public NaiveBayes() {
@@ -40,9 +40,9 @@ public class NaiveBayes extends Classifier {
         //处理缺失属性
         _defaults = kill_missing_data();
         
-        countForLabels();
-        countForAttributes();
-        updateProbability();
+        countForLabels();        //统计P(C)的count值
+        countForAttributes();    //统计P(X|C)的count值
+        updateProbability();     //计算概率
     }
 
     @Override
@@ -237,6 +237,7 @@ public class NaiveBayes extends Classifier {
         return 0;
     }
     
+    //计算待预测元组的P(X|C)
     private double calculateProbabilityForLabelIndex(int index, double[] features) {
         double label = _labelList[index];
         double temp = _labelCounter.get(label).probability;
@@ -259,11 +260,7 @@ public class NaiveBayes extends Classifier {
                     temp *= gauss;
                 } else {
                     //只有一个值，无法使用高斯分布
-                    if (var == mean) {
-                        temp *= 1;
-                    } else {
-                        temp *= 0;
-                    }
+                    temp *= 1;
                 }
             }
         }
@@ -271,6 +268,7 @@ public class NaiveBayes extends Classifier {
         return temp;
     }
     
+    //拉普拉斯校准
     private void laplace(double[] features) {
         for (int i = 0; i < _labelList.length; ++i) {
             double label = _labelList[i];
